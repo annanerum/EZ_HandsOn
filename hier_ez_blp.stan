@@ -74,7 +74,7 @@ transformed parameters {
 
 model {
   // priors for the population level
-  beta_v[1] ~ normal(2, 1);            // average drift: clearly above 0
+  beta_v[1] ~ normal(2, 1);            // average non-worddrift: clearly above 0
   beta_v[2:K] ~ normal(0, 1);          // condition effects: centred on "no effect"
   sd_v ~ normal(0, 1);
   mu_log_a ~ normal(log(1.5), 0.5);    // median a ~1.5

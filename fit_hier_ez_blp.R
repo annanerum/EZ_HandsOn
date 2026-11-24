@@ -10,7 +10,7 @@
 #                  repos = c("https://stan-dev.r-universe.dev", getOption("repos")))
 # cmdstanr::check_cmdstan_toolchain()   # C++ compiler available?
 # cmdstanr::install_cmdstan()           # downloads & builds CmdStan 
-remotes::install_github("bnicenboim/bcogsci")   # data 
+#remotes::install_github("bnicenboim/bcogsci")   # data 
 
 library(dplyr)
 library(tidyr)
@@ -28,7 +28,7 @@ set.seed(2026)
 if (requireNamespace("rstudioapi", quietly = TRUE) && rstudioapi::isAvailable()) {
   setwd(dirname(rstudioapi::getSourceEditorContext()$path))
 }
-getwd()   # should end in .../workshop utrecht
+getwd()   # should be the folder where you saved this script and hier_ez_blp.stan
 
 # stop if Stan file is not where script is
 if (!file.exists("hier_ez_blp.stan")) {
@@ -40,16 +40,10 @@ dir.create("fits", showWarnings = FALSE)
 
 
 # download data
-if (requireNamespace("bcogsci", quietly = TRUE)) {
-  data("df_blp", package = "bcogsci")
-} else {
-  tmp <- file.path(tempdir(), "df_blp.rda")
-  download.file(
-    "https://github.com/bnicenboim/bcogsci/raw/master/data/df_blp.rda",
-    destfile = tmp, mode = "wb"
-  )
-  load(tmp)
-}
+tmp <- file.path(tempdir(), "df_blp.rda")
+download.file("https://github.com/bnicenboim/bcogsci/raw/master/data/df_blp.rda",
+              destfile = tmp, mode = "wb")
+load(tmp)
 
 # for the workshop we use the smaller subset `df_blp`
 # note: the help page ?df_blp says 40 participant but the current data have
@@ -80,7 +74,16 @@ ggplot(df_blp, aes(rt)) +
   geom_histogram(binwidth = 20) +
   coord_cartesian(xlim = c(0, 3000)) +
   labs(x = "RT (ms)", title = "RTs (0-3000 ms)")
-
+# words are much less accurate than nonwords (0.76 vs .95)
+# the BLP contains almost all mono- and disyllabic English words, including many very rare ones that participants don't know
+# --> they answer "nonword" --> error
+# accuracy strongly depends on frequency (freq = occurrences per million words)
+df_blp |>
+  filter(lex == "word") |>
+  mutate(log10_freq = cut(log10(freq), c(-Inf, -1, 0, 1, Inf))) |>
+  group_by(log10_freq) |>
+  summarise(n = n(), accuracy = mean(acc))
+# words below 0.1 per million: about 50% correct (chance level), above 10 per million: about 97%
 
 # clean data
 
@@ -101,22 +104,22 @@ df <- df_blp |>
 
 # defining conditions
 
-# the EZ needs summary statistics per participant x condition, so we need discrete conditions
-# frequency is continuous, so we split the words at the median of log frequency into low-frequency (LF)
-# vs high-frequency (HF) words
-# note: a trial-level DDM could use frequency as a continuous predictor, this is one
-# of the costs of the ez 
-median_log_freq <- df |>
-  filter(lex == "word") |>
-  pull(freq) |>
-  log() |>
-  median()
+# the EZ works with summary statistics per participant x condition, so
+# participant-level predictors (e.g., age, vocabulary score) can be continuous
+# --> one value per participant --> they can predict that participant's v, a or t0
+# and trial-level (item) predictors such as word frequency change from trial to trial
+# and are averaged away in the summary statistics --> they must be binned into conditions
+# a trial-level DDM could use frequency as a continuous predictor --> one of the costs of the EZ
 
+# frequency on the log10 scale (as done in the paper we took this dataset from)
+# cutoff at log10(freq) = 0, i.e. 1 occurrence per million words
+# below = low-frequency (LF)
+# at or above = high-frequency (HF)
 df <- df |>
   mutate(cond = case_when(
-    lex == "non-word"             ~ "nonword",
-    log(freq) <  median_log_freq  ~ "word_lf",
-    log(freq) >= median_log_freq  ~ "word_hf"
+    lex == "non-word"  ~ "nonword",
+    log10(freq) <  0   ~ "word_lf",
+    log10(freq) >= 0   ~ "word_hf"
   ),
   cond = factor(cond, levels = c("nonword", "word_lf", "word_hf")))
 
@@ -158,40 +161,41 @@ ez_data |>
 # LF words: lower accuracy and slower/more variable RTs -> lower drift?
 
 
-# design matrix for the drift rate 
+# design matrix for the drift rate
 
 # like in lme4/brms, condition effects enter through a design matrix X
-# we use two planned contrasts:
-# lex: words (average of LF and HF) vs nonwords
-# freq : HF words vs LF words
+# lex:  dummy coded, 0 = nonword, 1 = word
+# freq: -1/2 = LF, +1/2 = HF
+# frequency only exists for words --> it enters as an interaction lex:freq
+# (for nonwords lex = 0, so their freq value does not matter)
 
-#   cond      Intercept   lex    freq
-#   nonword       1      -2/3     0
-#   word_lf       1       1/3   -1/2
-#   word_hf       1       1/3    1/2
+#   cond      Intercept   lex   lex:freq
+#   nonword       1        0       0
+#   word_lf       1        1     -1/2
+#   word_hf       1        1      1/2
 
 # in this coding:
-# Intercept = average drift across the three conditions
-# lex = mean drift for words - drift for nonwords
-# freq = drift for HF words - drift for LF words (frequency effect)
+# Intercept = drift for nonwords
+# lex       = mean drift for words (average of LF and HF) - drift for nonwords
+# lex:freq  = drift for HF words - drift for LF words (frequency effect)
 contrasts_cond <- tibble(
   cond = factor(c("nonword", "word_lf", "word_hf"), levels = levels(df$cond)),
-  lex  = c(-2/3, 1/3, 1/3),
+  lex  = c(0, 1, 1),
   freq = c(0, -1/2, 1/2)
 )
 
 ez_data <- ez_data |> left_join(contrasts_cond, by = "cond")
 
-X <- model.matrix(~ 1 + lex + freq, data = ez_data)
+X <- model.matrix(~ 1 + lex + lex:freq, data = ez_data)
 head(X)
 
-# the same contrasts once per condition (this is used later to compute condition means)
-X_cond <- model.matrix(~ 1 + lex + freq, data = contrasts_cond)
-head (X_cond)
+# the same coding once per condition (used later to compute condition means)
+X_cond <- model.matrix(~ 1 + lex + lex:freq, data = contrasts_cond)
+X_cond
 
 
 
-# data for Rstan 
+# data for Stan 
 # Stan cannot handle factors or arbitrary IDs: participants must be numbered 1, 2, ..., J without gaps
 # the original IDs in `subj` may have gaps (or be text) so we recode them
 # factor() sorts the unique IDs, as.integer() turns them into 1..J
@@ -210,7 +214,7 @@ stan_data <- list(
   # tells Stan how long the vectors/matrices are
   N_cells = nrow(ez_data), # number of cells (here 20 x 3 = 60)
   J = max(ez_data$subj_idx), # number of participants (20)
-  K = ncol(X), # number of drift coefficients (3 --> intercept, lex, freq)
+  K = ncol(X), # number of drift coefficients (3 --> intercept, lex, lex:freq)
   
   # which cell belongs to whom, and to which condition
   subj = ez_data$subj_idx,# participant index (1..J) of each cell
@@ -230,7 +234,7 @@ stan_data <- list(
   # we use this to see what the priors predict before seeing the data
   prior_only = 0
 )
- 
+
 # correct names, lengths and types? (int vs num, no NAs)
 str(stan_data)
 
@@ -238,7 +242,6 @@ str(stan_data)
 # now we can compile the model 
 # lets look at the stan file 
 ez_model <- cmdstan_model(file.path("hier_ez_blp.stan"))
-
 
 # prior predictive check 
 # before looking at the data: what do our priors imply about accuracy and RTs?
@@ -254,12 +257,15 @@ fit_prior <- ez_model$sample(
   output_dir      = "fits",
   output_basename = "ez_blp_prior"
 )
+# this prior fit shows a few divergent transitions (about 10 of 2000 draws)
+# they only appear when sampling from the priors alone, not in the real fit
+# for the prior predictive plot this does not matter, we only look at the rough range of predicted data
 
 prior_pred <- fit_prior$draws(c("pred_n_correct", "pred_mean_rt"),
                               format = "draws_matrix")
 prior_acc  <- prior_pred[, grepl("pred_n_correct", colnames(prior_pred))] /
-              matrix(stan_data$n_trials, nrow(prior_pred), stan_data$N_cells,
-                     byrow = TRUE)
+  matrix(stan_data$n_trials, nrow(prior_pred), stan_data$N_cells,
+         byrow = TRUE)
 prior_mrt  <- prior_pred[, grepl("pred_mean_rt", colnames(prior_pred))]
 
 tibble(accuracy = as.vector(prior_acc), mean_rt = as.vector(prior_mrt)) |>
@@ -277,23 +283,24 @@ tibble(accuracy = as.vector(prior_acc), mean_rt = as.vector(prior_mrt)) |>
 # these priors are good (weakly informative):
 # all observed cells (red) lie inside the grey cloud: the priors can
 # produce data like ours, so they do not rule out the true values
-# most prior mass is in a plausible region (mean RT ~0.3-1.5 s, accuracy
-# mostly above .5), but the cloud is much wider than the data
+# most prior mass is in a plausible region but the cloud is much wider than the data
 # the priors do not decide the result --> the data will
-# no mean RTs near 0: the prior on t0 (median ~350 ms) makes RTs below
-# ~200 ms very rare, which matches what usually possible
+# no mean RTs near 0: the prior on t0 (median ~350 ms) makes RTs below ~200 ms very rare
 
 # notes:
-# many predictions are at accuracy ~1: large a and large v together make
-# errors almost impossible. This is plausible for easy items, but a bit optimistic in general
+# many predictions are at accuracy ~1: large a and large v together make errors almost impossible
+# This is plausible for easy items, but a bit optimistic in general
+
 # some predictions are below .5 (below chance): the drift prior allows negative drift
-# This looks strange, but its important: for LF words some
-# participants are at or below .5, because they do not know many of these words and answer "nonword"
+# this looks strange, but its important: for LF words some participants are at or below .5,
+# because they do not know many of these words and answer "nonword"
 # A prior that forced v > 0 would clash with these cells
 # --> a thin tail goes to mean RTs of 2-3 s: so unlikely for lexical decision,
 # but rare in the prior and the data will easily overrule it
+
 # this plot only shows accuracy and mean RT
 # the priors also imply RT variances, which we could check the same way
+
 # with 20 participants x ~200-600 trials per cell, the likelihood dominates these priors
 # we can later change the priors and see whether the posterior moves
 
@@ -315,6 +322,10 @@ fit <- ez_model$sample(
   output_basename = "ez_blp"    
 )
 # nice about the EZ: it only needs 60 cells instead of 24,000 trials so its quite fast
+# you may see "Rejecting initial value" or "Informational Message" at the start
+# This is because Stan tried random starting values that are impossible for the model and picks new ones
+# --> harmless if it only happens at the start
+# the diagnostics below look fine
 
 
 # checking if the sampler worked
@@ -338,14 +349,13 @@ mcmc_trace(fit$draws(c("beta_v", "mu_log_a", "mu_log_t0")))
 # one row per column of X: mean, sd and 95% credible interval of the posterior
 fit$summary("beta_v", mean, sd, ~ quantile(.x, probs = c(0.025, 0.975))) |>
   mutate(term = colnames(X))
-# intercept is above 0: the average drift across the three conditions --> people accumulate evidence
-# toward the correct response
-# lex = negative --> words have on average lower drift than nonwords
-# that is surprising at first, but the word average includes the LF
-# words, which are very hard 
-# freq: how much HF words have a higher drift than LF words --> this is the word frequency effect
+# intercept = drift for nonwords (about 2.0): clearly above 0 --> people accumulate
+# evidence toward the correct response
+# lex = mean drift for words - drift for nonwords (about -0.55) --> negative: words have on average lower drift than nonwords
+# that is surprising at first, but the word average includes the LF words, which are very hard
+# lex:freq = how much higher the drift is for HF words than for LF words --> this is the word frequency effect
 # --> speed of evidence accumulation --> the interval is far from 0
-# we later turn these coefficients back into one drift per condition 
+# we later turn these coefficients back into one drift per condition
 
 # all posterior draws as a data frame: one row per draw (4 chains x 1000 = 4000 rows)
 # one column per parameter
@@ -364,9 +374,9 @@ mean(draws$`beta_v[3]` > 0)    # posterior probability that the effect is > 0
 
 
 # average drift per condition: combine coefficients with the contrasts
-# the coefficients (intercept, lex, freq) are hard to read directly, so we turn
+# the coefficients (intercept, lex, lex:freq) are hard to read directly, so we turn
 # them back into one drift per condition: drift = X_cond row x beta_v
-# e.g. LF words: 1 * intercept + 1/3 * lex + (-1/2) * freq
+# e.g. LF words: 1 * intercept + 1 * lex + (-1/2) * lex:freq
 # we do this for every posterior draw, so we also estimate teh uncertainty
 # always compute first, then summarise (do not only the posterior means)
 beta_mat <- fit$draws("beta_v", format = "draws_matrix")   # draws x K (4000 x 3)
@@ -406,19 +416,14 @@ draws |>
 # NDT is at 360 ms, this is the time used for encoding the letter string & pressing the key
 
 
-
 # how much do people differ? (by-participant SDs)
-# note: fit$summary() shows 90% intervals by default 
+# note: fit$summary() shows 90% intervals by default
 fit$summary(c("sd_v", "sd_log_a", "sd_log_t0"))
 # what we see:
-# sd_v[1]: participants differ in their average drift by about +/- 0.5 around 1.6 
+# sd_v[1]: participants differ in their nonword drift by about +/- 0.5 around 2.0
 # sd_v[2], sd_v[3]: the lex and freq effects also differ between people (like by-participant random slopes in lme4)
 # sd_log_a and sd_log_t0 are on the log scale: roughly, people
-# differ by about this much in caution and in non-decision time
-# Cor_v: correlations between the random effects
-# e.g. Cor_v[2,1] at about 0.4:
-# people with a higher average drift tend to have a larger lex effect.
-# but with only 20 participants these correlations are uncertain (wide intervals)
+# differ by about 16% in caution and 12% (~ +/- 40 ms) in non-decision time
 
 
 # participant level 
@@ -442,22 +447,46 @@ ggplot(v_cells, aes(cond, mean, group = subj)) +
 # pulled toward the group 
 
 
-# boundary separation and non-decision time per participant
-# fit$summary returns names like "a[3]" or "t0[12]"
-# we split them into the parameter name (par) and the participant index (subj_idx)
-person_pars <- fit$summary(c("a", "t0"), mean,
-                           ~ quantile(.x, probs = c(0.025, 0.975))) |>
-  mutate(par      = sub("\\[.*", "", variable),            # "a[3]" -> "a"
-         subj_idx = as.integer(gsub("\\D", "", variable))) # "a[3]" -> 3
+# all parameters per participant: a, t0 and the three drift coefficients
+# fit$summary returns names like "a[3]", "t0[12]" or "b_v[5,2]"
+# (b_v[5,2] = participant 5, drift coefficient 2 = lex)
+# we extract the participant index and the parameter name
+drift_labels <- c("drift: nonword", "drift: word - nonword", "drift: HF - LF")
 
-ggplot(person_pars, aes(mean, reorder(factor(subj_idx), mean))) +
-  geom_pointrange(aes(xmin = `2.5%`, xmax = `97.5%`)) +
-  facet_wrap(~ par, scales = "free_x") +
-  labs(x = "posterior mean (95% CrI)", y = "participant")
+person_pars <- fit$summary(c("a", "t0", "b_v"), mean,
+                           ~ quantile(.x, probs = c(0.025, 0.975))) |>
+  mutate(
+    subj_idx = as.integer(sub("^.*\\[(\\d+).*$", "\\1", variable)),   # "b_v[5,2]" -> 5
+    k        = as.integer(ifelse(grepl(",", variable),
+                                 sub("^.*,(\\d+)\\]$", "\\1", variable), NA)),  # "b_v[5,2]" -> 2
+    par      = case_when(
+      startsWith(variable, "a[")  ~ "a (boundary)",
+      startsWith(variable, "t0[") ~ "t0 (s)",
+      TRUE                        ~ drift_labels[k]
+    ),
+    par = factor(par, levels = c("a (boundary)", "t0 (s)", drift_labels))
+  )
+
+# sort participants by their frequency effect, same order in every panel
+subj_order <- person_pars |>
+  filter(par == "drift: HF - LF") |>
+  arrange(mean) |>
+  pull(subj_idx)
+
+ggplot(person_pars, aes(mean, factor(subj_idx, levels = subj_order))) +
+  # dashed line at 0 for the two effects
+  geom_vline(data = tibble(par = factor(drift_labels[2:3], levels = levels(person_pars$par))),
+             aes(xintercept = 0), linetype = "dashed", colour = "grey50") +
+  geom_pointrange(aes(xmin = `2.5%`, xmax = `97.5%`), size = 0.2) +
+  facet_wrap(~ par, scales = "free_x", nrow = 1) +
+  labs(x = "posterior mean (95% CrI)", y = "participant (sorted by frequency effect)")
 # what we see:
-# the intervals are narrow because each participant has ~1200 trials
-# participants are sorted by their average over a and t0 together, so the
-# t0 panel is not perfectly ordered
+# each row is one participant
+# the frequency effect is positive for every participant (all intervals far from 0) but its size differs
+# the lexicality effect differs in sign: most participants have lower drift for
+# words than for nonwords, a few have higher drift for words
+# the intervals are narrow because each participant has about 1200 trials
+
 
 # comparison to the non-hierarchical EZ 
 # the non-hierarchical ez computes v, a, t0 for each cell in closed form, separately,
