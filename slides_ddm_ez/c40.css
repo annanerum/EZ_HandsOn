@@ -1,0 +1,336 @@
+/* =========================================================================
+   40C3 "Model Citizens" theme for xaringan
+   Fonts: Hack (everything; Jersey 10 still loaded for .jersey[...])
+   Palette: 0 #75b44b  1 #15ada3  2 #9fa4e8  3 #c892d6
+            4 #ee5da2  5 #ea6f82  6 #f88a30  7 #ffbc40
+            A #ebedf0  B #001300          key colours: 0, A, B
+   ========================================================================= */
+
+/* ---- Fonts (local files in fonts/, embedded when self_contained) ------ */
+@font-face { font-family: "Hack"; src: url("fonts/hack-regular.woff2") format("woff2");    font-weight: 400; font-style: normal; }
+@font-face { font-family: "Hack"; src: url("fonts/hack-bold.woff2") format("woff2");       font-weight: 700; font-style: normal; }
+@font-face { font-family: "Hack"; src: url("fonts/hack-italic.woff2") format("woff2");     font-weight: 400; font-style: italic; }
+@font-face { font-family: "Hack"; src: url("fonts/hack-bolditalic.woff2") format("woff2"); font-weight: 700; font-style: italic; }
+@font-face { font-family: "Jersey 10"; src: url("fonts/Jersey10-Regular.ttf") format("truetype"); font-weight: 400; font-style: normal; }
+
+/* ---- Palette ----------------------------------------------------------- */
+:root {
+  --c0: #75b44b; --c1: #15ada3; --c2: #9fa4e8; --c3: #c892d6;
+  --c4: #ee5da2; --c5: #ea6f82; --c6: #f88a30; --c7: #ffbc40;
+  --cA: #ebedf0; --cB: #001300;
+
+  --font-head: "Hack", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+  --font-body: "Hack", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+}
+
+/* Every slide reads its colours from these three variables,
+   so a slide class only has to swap them (see "Colour variants"). */
+.remark-slide-content {
+  --bg: var(--cB);
+  --fg: var(--cA);
+  --accent: var(--c0);
+  --muted: rgba(235, 237, 240, 0.12);
+
+  background-color: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: 20px;
+  line-height: 1.45;
+  padding: 1em 2.6em 1.2em 2.6em;
+}
+html, body, .remark-container { background-color: #000a00; }
+
+/* ---- Headings ---------------------------------------------------------- */
+/* Headings: Hack Bold, accent colour */
+.remark-slide-content h1,
+.remark-slide-content h2 {
+  font-family: var(--font-head);
+  font-weight: 700;
+  color: var(--accent);
+  line-height: 1.2;
+  margin: 0.35em 0 0.45em 0;
+}
+.remark-slide-content h1 { font-size: 44px; }
+.remark-slide-content h2 { font-size: 36px; }
+
+/* Subhead: Hack Bold, underlined */
+.remark-slide-content h3 {
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: 26px;
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 0.22em;
+  text-decoration-thickness: 2px;
+  margin: 0.4em 0 0.6em 0;
+}
+.remark-slide-content h4 {
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: 20px;
+  color: var(--fg);
+  text-decoration: underline;
+  text-underline-offset: 0.22em;
+  margin: 0.4em 0;
+}
+
+/* ---- Body text --------------------------------------------------------- */
+.remark-slide-content strong { color: var(--accent); font-weight: 700; }
+.remark-slide-content a,
+.remark-slide-content a > code {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}
+.remark-slide-content ul,
+.remark-slide-content ol { padding-left: 1.3em; }
+.remark-slide-content ul { list-style: none; }
+.remark-slide-content ul > li { position: relative; }
+.remark-slide-content ul > li::before {
+  content: ">";
+  position: absolute;
+  left: -1.3em;
+  color: var(--accent);
+  font-weight: 700;
+}
+.remark-slide-content ol > li::marker { color: var(--accent); font-weight: 700; }
+.remark-slide-content li { margin: 0.25em 0; }
+
+.remark-slide-content hr {
+  border: 0;
+  border-top: 1px solid var(--fg);
+  opacity: 0.8;
+  margin: 0.8em 0;
+}
+.remark-slide-content blockquote {
+  border-left: 4px solid var(--accent);
+  margin-left: 0;
+  padding-left: 1em;
+}
+.remark-slide-content img,
+.remark-slide-content video,
+.remark-slide-content iframe { max-width: 100%; }
+
+.footnote {
+  position: absolute;
+  bottom: 2.4em;
+  padding-right: 4em;
+  font-size: 15px;
+  opacity: 0.85;
+}
+
+/* ---- Code -------------------------------------------------------------- */
+.remark-code, .remark-inline-code { font-family: var(--font-body); }
+.remark-slide-content .remark-inline-code {
+  color: var(--accent);
+  background: transparent;
+}
+.remark-slide-content pre {
+  border: 1px solid var(--accent);
+  background: var(--bg);
+}
+.remark-slide-content pre .remark-code,
+.remark-slide-content .remark-code.hljs,
+.remark-slide-content .remark-code .hljs {
+  background: transparent;
+  color: var(--fg);
+  font-size: 16px;
+  line-height: 1.45;
+  padding: 0.7em 0.9em;
+}
+.remark-slide-content .remark-code-line-highlighted { background-color: rgba(117, 180, 75, 0.28); }
+
+/* syntax colours from the palette (beat remark's built-in highlight style) */
+.remark-slide-content .remark-code .hljs-keyword,
+.remark-slide-content .remark-code .hljs-selector-tag { color: var(--c4); }
+.remark-slide-content .remark-code .hljs-string,
+.remark-slide-content .remark-code .hljs-attr        { color: var(--c7); }
+.remark-slide-content .remark-code .hljs-number,
+.remark-slide-content .remark-code .hljs-literal     { color: var(--c2); }
+.remark-slide-content .remark-code .hljs-built_in,
+.remark-slide-content .remark-code .hljs-title,
+.remark-slide-content .remark-code .hljs-function    { color: var(--c1); }
+.remark-slide-content .remark-code .hljs-params,
+.remark-slide-content .remark-code .hljs-variable    { color: var(--c3); }
+.remark-slide-content .remark-code .hljs-comment     { color: #7d9a72; font-style: italic; }
+.remark-slide-content .remark-code .hljs-meta        { color: var(--c6); }
+
+/* ---- Tables ------------------------------------------------------------ */
+.remark-slide-content table {
+  margin: auto;
+  border-collapse: collapse;
+  border-top: 2px solid var(--accent);
+  border-bottom: 2px solid var(--accent);
+  font-size: 17px;
+}
+.remark-slide-content thead th {
+  border-bottom: 1px solid var(--accent);
+  color: var(--accent);
+  font-weight: 700;
+}
+.remark-slide-content th, .remark-slide-content td { padding: 6px 12px; }
+.remark-slide-content tbody tr:nth-child(even) { background: var(--muted); }
+
+/* ---- Slide numbers (turned into hex by c40-slide-numbers.html) ---------- */
+.remark-slide-number {
+  font-family: var(--font-body);
+  font-size: 18px;
+  color: var(--accent);
+  opacity: 1;
+  bottom: 16px;
+  right: 26px;
+}
+
+/* ---- Layout helpers ---------------------------------------------------- */
+.pull-left  { float: left;  width: 47%; }
+.pull-right { float: right; width: 47%; }
+.pull-right + * { clear: both; }
+
+/* narrow label column + wide text column, like the style guide samples */
+.left-column {
+  float: left;
+  width: 27%;
+  height: 92%;
+}
+.left-column h3, .left-column h4 { font-size: 18px; margin-top: 0.2em; }
+.right-column {
+  float: right;
+  width: 70%;
+}
+
+.small  { font-size: 80%; }
+.large  { font-size: 125%; }
+.head   { font-family: var(--font-head); font-weight: 700; font-size: 125%; }
+.jersey { font-family: "Jersey 10", monospace; font-size: 125%; }   /* inline Jersey text */
+.label  { font-weight: 700; text-decoration: underline; text-underline-offset: 0.2em; }
+
+/* "A LOUD HEADER!" and "a quiet header" boxes */
+.loud, .quiet {
+  display: inline-block;
+  font-family: var(--font-head);
+  font-weight: 700;
+  font-size: 22px;
+  line-height: 1.2;
+  padding: 0.12em 0.35em 0.18em 0.35em;
+  border: 2px solid var(--accent);
+}
+.loud  { background: var(--accent); color: var(--bg); }
+.quiet { background: transparent;   color: var(--accent); }
+
+/* framed box for definitions, take-home messages, ... */
+.box {
+  border: 2px solid var(--accent);
+  padding: 0.5em 0.9em;
+  margin: 0.6em 0;
+}
+.box-fill {
+  background: var(--accent);
+  color: var(--bg);
+  padding: 0.5em 0.9em;
+  margin: 0.6em 0;
+}
+.box-fill strong, .box-fill a,
+.box-fill .remark-inline-code,
+.loud .remark-inline-code { color: var(--bg); }
+
+/* text colours: .c0[...] ... .c7[...] */
+.c0 { color: var(--c0); } .c1 { color: var(--c1); } .c2 { color: var(--c2); } .c3 { color: var(--c3); }
+.c4 { color: var(--c4); } .c5 { color: var(--c5); } .c6 { color: var(--c6); } .c7 { color: var(--c7); }
+.cA { color: var(--cA); } .cB { color: var(--cB); }
+
+/* ---- Decoration: the three bars at the slide edge ----------------------- */
+.title-slide::before,
+.deco::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 64%;
+  width: 22px;
+  height: 26px;
+  background: linear-gradient(var(--accent) 0 4px, transparent 4px 11px,
+                              var(--accent) 11px 15px, transparent 15px 22px,
+                              var(--accent) 22px 26px);
+}
+
+/* ---- Title slide ------------------------------------------------------- */
+.title-slide { padding-left: 3em; padding-right: 3em; }
+.title-slide .title h1 {
+  font-size: 46px;
+  line-height: 1.25;
+  margin-bottom: 0.35em;
+}
+.title-slide .author h3 {
+  font-size: 22px;
+  color: var(--fg);
+  margin: 0;
+}
+.title-slide .author h3 br:first-child { display: none; }
+.title-slide .date {
+  border-top: 1px solid var(--fg);
+  margin-top: 1.1em;
+  padding-top: 0.6em;
+}
+.title-slide .date h3 {
+  font-weight: 400;
+  text-decoration: none;
+  color: var(--accent);
+  font-size: 20px;
+  margin: 0;
+}
+.title-slide .date small { font-size: 100%; }
+.title-slide .remark-slide-number { display: none; }
+
+/* ---- Colour variants (add to a slide's class:) ------------------------- */
+/* green: the "inverse"/section look */
+.remark-slide-content.inverse,
+.remark-slide-content.green {
+  --bg: var(--c0);
+  --fg: var(--cB);
+  --accent: var(--cB);
+  --muted: rgba(0, 19, 0, 0.1);
+  text-shadow: none;
+}
+.remark-slide-content.pink {
+  --bg: var(--c4);
+  --fg: var(--cA);
+  --accent: var(--cA);
+  --muted: rgba(235, 237, 240, 0.15);
+}
+.remark-slide-content.light {
+  --bg: var(--cA);
+  --fg: var(--cB);
+  --accent: #0f8a82;            /* darker c1 so it stays readable on light */
+  --muted: rgba(0, 19, 0, 0.06);
+}
+/* section slides: bigger heading */
+.remark-slide-content.inverse h1,
+.remark-slide-content.inverse h2 { font-size: 52px; }
+
+/* ---- Print / PDF ------------------------------------------------------- */
+@page { margin: 0; }
+@media print {
+  .remark-slide-scaler {
+    width: 100% !important;
+    height: 100% !important;
+    transform: scale(1) !important;
+    top: 0 !important;
+    left: 0 !important;
+  }
+}
+
+.remark-slide-content.pink-light {
+  --bg: #ffffff;
+  --fg: var(--cB);        /* body text: dark */
+  --accent: var(--c4);    /* headings, bold, bullets, slide number: pink */
+  --muted: rgba(238, 93, 162, 0.08);
+}
+
+/* ---- Title slide colours ---- */
+.remark-slide-content.title-slide {
+  --bg: #ebedf0;       /* background */
+  --fg: #001300;       /* divider line */
+  --accent: #15ada3;   /* the three bars on the left */
+}
+.title-slide .title h1 { color: #001300; }
+.title-slide .author h3 { color: #ee5da2; text-decoration: none}
+.title-slide .date h3  { color: #15ada3; }

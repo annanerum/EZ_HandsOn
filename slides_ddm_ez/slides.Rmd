@@ -1,0 +1,701 @@
+---
+title     : 'The (EZ) Drift Diffusion Model'
+author    : "<br />Anne Giacobello & Anne Lochner"
+date      : "<small>Workshop CPL 2026</small>"
+
+output:
+  xaringan::moon_reader:
+    lib_dir: libs
+    self_contained: true
+    chakra: libs/remark-latest.min.js
+    css: ["c40.css", "slides.css"]
+    nature:
+      countIncrementalSlides: false
+      slideNumberFormat: "%current%"
+      titleSlideClass: ["left", "middle"]
+      highlightStyle: "monokai"
+header-includes:
+  - \usepackage{xcolor}
+  - \usepackage{amsmath} % not really used here
+  - \DeclareMathSymbol{\qm}{\mathalpha}{operators}{"3F}
+  - \DeclareMathAlphabet{\mathbbold}{U}{bbold}{m}{n}
+
+---
+
+exclude: true
+
+```{r setup, include = FALSE}
+library("knitr")
+library(kableExtra)
+library(tidyverse)
+library(psych)
+options(htmltools.dir.version = FALSE)
+opts_chunk$set(echo = FALSE, fig.align = "center",
+               dev = "ragg_png", dpi = 150)  
+
+# remotes::install_github("gadenbuie/xaringanExtra")
+library("xaringanExtra")
+
+
+my_colors <- c(
+  green  = "#75b44b",  
+  teal   = "#15ada3",  # 1
+  blue   = "#9fa4e8",  # 2
+  purple = "#c892d6",  # 3
+  pink   = "#ee5da2",  # 4
+  red    = "#ea6f82",  # 5
+  orange = "#f88a30",  # 6
+  yellow = "#ffbc40",  # 7
+  light  = "#ebedf0",  
+  dark   = "#001300"   
+)
+
+library("ggplot2")
+library(diagram)
+
+# ggplot theme that sits on the dark slide background
+theme_c40 <- function(base_size = 16, base_family = "Hack") {
+  theme_minimal(base_size = base_size, base_family = base_family) +
+    theme(
+      plot.background   = element_rect(fill = my_colors["dark"], colour = NA),
+      panel.background  = element_rect(fill = my_colors["dark"], colour = NA),
+      panel.grid.major  = element_line(colour = "#1e3a17"),
+      panel.grid.minor  = element_blank(),
+      text              = element_text(colour = my_colors["light"]),
+      axis.text         = element_text(colour = my_colors["light"]),
+      plot.title        = element_text(colour = my_colors["green"], face = "bold"),
+      strip.text        = element_text(colour = my_colors["green"], face = "bold"),
+      legend.key        = element_rect(fill = my_colors["dark"], colour = NA)
+    )
+}
+theme_set(theme_c40())
+options(ggplot2.discrete.colour = unname(my_colors[1:8]),
+        ggplot2.discrete.fill   = unname(my_colors[1:8]))
+```
+
+```{r extras-styling, include = FALSE}
+use_xaringan_extra(c("tile_view", "clipboard")) #, "broadcast", "webcam", "animate_css"
+```
+
+```{r}
+add_overlay <- function(..., label = NULL, label_style = NULL) {
+  el <- list(...)
+
+  y <- '<div id="overlay-highlight"'
+  if(length(el) > 0) {
+    y <- c(y, 'style="', glue::glue('{names(el)}:{el};'))
+  }
+  y <- c(y, '">')
+
+  if(!is.null(label)) {
+    y <- c(y, glue::glue('<span" class="vertical-center"" style="{label_style}">{label}</span>'))
+  }
+
+  knitr::asis_output(glue::glue_collapse(c(y, "</div>")))
+}
+```
+
+<script src="https://cdn.jsdelivr.net/npm/medium-zoom@1.0.6/dist/medium-zoom.js"></script>
+<script type="module">
+import mediumZoom from 'https://cdn.jsdelivr.net/npm/medium-zoom@1.0.6/dist/medium-zoom.esm.js'
+
+const zoomDefault = mediumZoom('#zoom-default')
+const zoomMargin = mediumZoom('#zoom-margin', { margin: 45 })
+</script>
+
+<script type="text/x-mathjax-config">
+MathJax.Hub.Config({
+  "HTML-CSS": {
+    scale: 150
+  }
+});
+</script>
+
+---
+class: light
+
+## The Drift Diffusion Model
+
+- Model of **two-choice** decisions: evidence is **accumulated** over time until it hits one of two **boundaries**
+- Explains **what** you respond $\rightarrow$ choice, and **when** $\rightarrow$ response time (RT)
+
+- **Example: flanker task**: "Which way does the middle arrow point?" 
+  - evidence accumulates toward **"left"** or **"right"**
+  - incongruent flankers $\rightarrow$ lower drift rate $\rightarrow$ slower, more errors
+
+- **Widely used**:
+  - decision-making, memory, cognitive control, even creativity
+  - as a **measurement tool**, e.g. to validate clinical diagnoses
+
+.footnote[Stone (1960); Link & Heath (1975); Ratcliff (1978) · **Applications:** Krajbich et al. (2010); Starns (2012); White (2011); Donzallaz (2023); Weigard (2021)]
+
+
+---
+class: light
+
+## The 7 DDM Parameters
+
+```{r ddm-pic, fig.width = 10, fig.height = 4, out.width = "100%"}
+library(ggplot2)
+library(grid)
+
+
+
+col_bg    <- "#ebedf0"   
+col_fg    <- "#001300"
+col_ez    <- "#f88a30"  
+col_five  <- "#75b44b"   
+col_seven <- "#ea6f82"   
+
+alpha <- 1
+tau   <- 0.25
+
+t_knots <- c(0, 0.35, 0.42, 0.75, 1.15, 1.55, 1.75, 2.40, 2.85, 3.30, 3.75, 4.20)
+y_knots <- c(tau,  0.12, 0.25, 0.32, 0.18, 0.55, 0.35, 0.62, 0.58, 0.88, 0.70, alpha)
+
+
+y_knots_scaled <- tau + (y_knots - tau) * 0.62
+y_knots_scaled[length(y_knots_scaled)] <- alpha
+
+path_interp <- spline(t_knots, y_knots_scaled, n = 50, method = "natural")
+time_path   <- path_interp$x
+
+set.seed(7)
+n <- length(time_path)
+
+
+slow_walk    <- cumsum(rnorm(n, 0, 0.040)) * 0.20
+medium_bumps <- cumsum(rnorm(n, 0, 0.07))  * 0.14
+spikes       <- rnorm(n, 0, 0.09)
+
+spike_locs <- sample(seq(5, n - 5), size = 6)
+spike_dir  <- sample(c(-1, 1), size = 6, replace = TRUE)
+spikes[spike_locs] <- spikes[spike_locs] + spike_dir * runif(6, 0.14, 0.22)
+
+jitter <- slow_walk + medium_bumps + spikes
+jitter <- jitter - mean(jitter)
+
+ev_path <- path_interp$y + jitter
+
+
+ev_path <- ev_path - ev_path[1] + tau
+
+
+hard_cap <- alpha * 0.72
+ev_path[1:(n-1)] <- pmin(ev_path[1:(n-1)], hard_cap)
+
+
+min_val <- 0.04
+too_low <- ev_path < min_val
+ev_path[too_low] <- min_val + abs(ev_path[too_low] - min_val) * 0.3
+
+
+blend_start <- round(n * 0.88)
+for (i in blend_start:n) {
+  w <- ((i - blend_start) / (n - blend_start))^2
+  ev_path[i] <- (1 - w) * ev_path[i] + w * alpha
+}
+
+
+ev_path[1] <- tau
+ev_path[n] <- alpha
+
+rt <- max(time_path)
+df_path <- data.frame(time = time_path, evidence = ev_path)
+
+tau_x1 <- -0.38
+tau_x2 <-  0.00
+beta_x <- -0.07
+
+left_margin <- -0.95   
+
+x_max <- 5.8
+x_min <- left_margin
+x     <- seq(x_min, x_max, length.out = 1500)
+
+x_shift    <- pmax(x - 0.0, 0)
+top_raw    <- dgamma(x_shift, shape = 5.0, scale = 0.42)
+bottom_raw <- dgamma(x_shift, shape = 5.0, scale = 0.42)
+
+top_raw    <- top_raw    / max(top_raw)
+bottom_raw <- bottom_raw / max(bottom_raw)
+
+top_raw[x    < 0] <- 0
+bottom_raw[x < 0] <- 0
+
+taper <- ifelse(x < rt - 0.3, 1, exp(-((x - (rt - 0.3))^2) / (2 * 0.15^2)))
+taper[x >= rt] <- 0
+
+top_raw    <- top_raw    * taper
+bottom_raw <- bottom_raw * taper
+
+top_raw[top_raw       < 0.002] <- 0
+bottom_raw[bottom_raw < 0.002] <- 0
+
+top_y    <-  alpha + top_raw    * 0.44
+bottom_y <- -bottom_raw         * 0.22
+
+df_dens <- data.frame(x = x, top_y = top_y, bottom_y = bottom_y)
+
+
+arr_x1 <- 1.6;  arr_y1 <- 0.08
+arr_x2 <- 2.3;  arr_y2 <- 0.32
+offset <- 0.10
+
+
+sv_fan <- data.frame(
+  x    = c(arr_x1, arr_x1),
+  xend = c(arr_x1 + 0.65, arr_x1 + 0.65),
+  y    = c(arr_y1, arr_y1),
+  yend = c(arr_y1 + 0.62, arr_y1 + 0.12)
+)
+
+
+sw_x     <- -0.72          
+sw_half  <- 0.095          
+
+
+st0_y     <- -0.16
+st0_x1    <- tau_x1
+st0_x2    <- 0.02
+st0_xmid  <- (st0_x1 + st0_x2) / 2
+
+p <- ggplot() +
+  
+    geom_ribbon(data = df_dens,
+              aes(x = x, ymin = alpha, ymax = top_y),
+              fill = "#5c6b58", colour = col_fg, linewidth = 0.4) +
+  
+  geom_ribbon(data = df_dens,
+              aes(x = x, ymin = bottom_y, ymax = 0),
+              fill = "#5c6b58", colour = col_fg, linewidth = 0.4) +
+  
+  geom_segment(aes(x = left_margin, xend = x_max, y = alpha, yend = alpha),
+               colour = col_fg, linewidth = 1.2) +
+  geom_segment(aes(x = left_margin, xend = x_max, y = 0, yend = 0),
+               colour = col_fg, linewidth = 1.2) +
+  geom_segment(aes(x = 0, xend = 0, y = -0.05, yend = alpha + 0.05),
+               colour = col_fg, linewidth = 1.2) +
+  
+  # tau 
+  geom_segment(aes(x = tau_x1, xend = tau_x2, y = tau, yend = tau),
+               colour = col_ez, linewidth = 1.3) +
+  geom_segment(aes(x = tau_x1, xend = tau_x1, y = tau - 0.04, yend = tau + 0.04),
+               colour = col_ez, linewidth = 1.0) +
+  
+  # s_tau 
+  geom_segment(aes(x = st0_x1, xend = st0_x2, y = st0_y, yend = st0_y),
+               colour = col_seven, linewidth = 2.2, alpha = 0.35, lineend = "round") +
+  geom_segment(aes(x = st0_x1, xend = st0_x1, y = st0_y - 0.035, yend = st0_y + 0.035),
+               colour = col_seven, linewidth = 1.0) +
+  geom_segment(aes(x = st0_x2, xend = st0_x2, y = st0_y - 0.035, yend = st0_y + 0.035),
+               colour = col_seven, linewidth = 1.0) +
+  
+  # beta 
+  geom_segment(aes(x = beta_x, xend = beta_x, y = 0.01, yend = tau - 0.01),
+               colour = col_five, linewidth = 1.3,
+               arrow = arrow(ends = "both", length = unit(0.10, "inches"),
+                             type = "closed")) +
+  
+  # s_beta 
+  geom_segment(aes(x = sw_x, xend = sw_x, y = tau - sw_half, yend = tau + sw_half),
+               colour = col_seven, linewidth = 2.2, alpha = 0.35, lineend = "round") +
+  geom_segment(aes(x = sw_x - 0.08, xend = sw_x + 0.08, y = tau - sw_half, yend = tau - sw_half),
+               colour = col_seven, linewidth = 1.0) +
+  geom_segment(aes(x = sw_x - 0.08, xend = sw_x + 0.08, y = tau + sw_half, yend = tau + sw_half),
+               colour = col_seven, linewidth = 1.0) +
+  
+  geom_line(data = df_path, aes(x = time, y = evidence),
+            colour = col_fg, linewidth = 1.2) +
+  
+  geom_segment(aes(x = rt, xend = rt, y = alpha, yend = alpha + 0.06),
+               colour = "#001300", linewidth = 1.2) +
+  
+  # nu 
+  geom_segment(aes(x = arr_x1, xend = arr_x2, y = arr_y1, yend = arr_y2),
+               colour = col_ez, linewidth = 1.4,
+               arrow = arrow(length = unit(0.12, "inches"), type = "closed")) +
+  
+  # s_nu 
+  geom_segment(data = sv_fan, aes(x = x, xend = xend, y = y, yend = yend),
+               colour = col_five, linewidth = 1.2, alpha = 0.85,
+               arrow = arrow(length = unit(0.10, "inches"), type = "closed")) +
+  
+  annotate("text", x = tau_x1 + 0.20, y = alpha + 0.07,
+           label = expression(alpha), colour = col_ez,
+           size = 7, hjust = -0.2, vjust = 0.9) +
+  
+  annotate("text", x = (tau_x1 + tau_x2) / 2, y = tau + 0.05,
+           label = expression(tau), colour = col_ez,
+           size = 6, hjust = 0.5) +
+  
+  annotate("text", x = arr_x1 + 0.90, y = arr_y1 + 0.2 ,
+           label = expression(nu), colour = col_ez, size = 6, hjust = 1, vjust = 1) +
+  
+  annotate("text", x = beta_x - 0.11, y = tau / 2,
+           label = expression(beta), colour = col_five,
+           size = 6, hjust = 1, vjust = 0.5) +
+  
+  annotate("text", x = arr_x1 + 0.65, y = arr_y1 + 0.72,
+           label = expression(s[nu]), colour = col_five, size = 6, hjust = 0.5, fontface = "bold") +
+  
+  annotate("text", x = sw_x - 0.10, y = tau,
+           label = expression(s[beta]), colour = col_seven,
+           size = 6, hjust = 1, vjust = 0.5) +
+  
+  annotate("text", x = st0_xmid, y = st0_y - 0.10,
+           label = expression(s[tau]), colour = col_seven,
+           size = 6, hjust = 0.5) +
+  
+  annotate("text", x = rt + 0.12, y = alpha + 0.11,
+           label = "observed RT", colour = "#001300",
+           size = 4.5, hjust = 0.0) +
+  
+  annotate("text", x = x_max - 0.1, y = alpha - offset,
+           label = "correct bound", colour = col_fg,
+           size = 4.5, hjust = 1) +
+  
+  annotate("text", x = x_max - 0.1, y = 0 + offset,
+           label = "error bound", colour = col_fg,
+           size = 4.5, hjust = 1) +
+  
+  annotate("text", x = left_margin + 0.10, y = 0.62,
+           label = "evidence", colour = col_fg,
+           angle = 90, size = 5.5) +
+  
+  annotate("text", x = -0.02, y = 0.00,
+           label = "0", colour = col_fg, size = 5.5, hjust = 1.2, vjust = 1.2) +
+  
+  coord_cartesian(
+    xlim = c(left_margin, x_max),
+    ylim = c(-0.42, 1.36),
+    clip = "off"
+  ) +
+  
+  theme_void() +
+  theme(plot.background = element_rect(fill = col_bg, colour = NA))
+
+p
+```
+
+.small[
+.pull-left[
+- <span class="c6">`\(\nu\)` (drift rate):</span> efficiency of evidence accumulation
+- <span class="c6">`\(\alpha\)` (boundary separation):</span> response caution
+- <span class="c0">`\(\beta\)` (starting point):</span> a priori bias
+- <span class="c6">`\(\tau\)` (non-decision time):</span> encoding + motor response
+]
+
+.pull-right[
+Across-trial variability in ...
+- <span class="c0">`\(s_\nu\)`</span> drift rate
+- <span class="c5">`\(s_\beta\)`</span> starting point
+- <span class="c5">`\(s_\tau\)`</span> non-decision time
+]
+]
+
+---
+class: light
+
+## Weak Spots of the DDM
+
+- **Estimation** is difficult:
+  - identifiability issues
+  - computational complexity
+  - long computing times
+- $\rightarrow$ hard for many researchers to use
+
+
+- **Solutions**:
+  - better estimation techniques
+  - efficient approximations
+  - reduced complexity $\rightarrow$ .c4[EZ-DDM]
+
+.footnote[Boehm (2018); Henrich (2024); Lüken (2025) · **EZ:** Wagenmakers et al. (2007)]
+
+---
+class: light
+
+## Hierarchical DDMs
+
+- **Fitting each participant separately**:
+  - $\rightarrow$ overestimates individual differences
+  - noise is read as true variability
+  
+  
+- **Hierarchical models** add a second level:
+  - individual parameters are drawn from a **population distribution**
+  - $\rightarrow$ inference on the **individual and group level** at the same time
+
+.footnote[Rouder et al. (2017); Boehm et al. (2018); Lee (2011); Vandekerckhove et al. (2011)]
+
+---
+class: light
+
+## Why Hierarchical Modelling?
+
+- **Advantages**:
+  - reliable estimates even with **sparse data** per participant
+  - parameters can vary **selectively** (some fixed, some free) $\rightarrow$ no overly complex models
+- Hierarchical versions exist for many cognitive models, e.g. MPT models and the DDM
+
+
+- **Bayesian modelling**:
+  - $\rightarrow$ makes complex models tractable
+  - frequentist hierarchical estimation is much harder
+
+.footnote[Lee (2011); Vandekerckhove et al. (2011); Smith & Batchelder (2010); Rouder & Lu (2005)]
+---
+
+class: pink-light
+
+
+# The EZ Diffusion Model
+
+- Developed by Wagenmakers et al. (2007) as a **frequentist**, **non-hierarchical** model
+- Estimates **3 key parameters**: drift rate $\nu$, boundary separation $\alpha$, non-decision time $\tau$
+- Simplifying assumptions:
+  - no a priori bias $\rightarrow$ $\beta = \frac{\alpha}{2}$
+  - no across-trial variability in $\nu$, $\beta$ and $\tau$
+- Computed from **3 summary statistics**:
+  - mean of the correct RTs ($MRT$)
+  - variance of the correct RTs ($VRT$)
+  - accuracy, i.e. proportion correct ($Pc$)
+
+.footnote[Wagenmakers et al. (2007)]
+
+
+---
+class: pink-light
+
+# Why use the EZ DDM?
+
+- **Computationally easy**: computes 3 parameters per condition and participant
+- **Surprisingly robust**:
+  - stable even with very low error rates, where full DDM fits can become unreliable or fail to converge
+  - based on aggregated measures $\rightarrow$ less sensitive to RT outliers
+- **Hierarchical EZ-DDM**:
+  - handles individual differences in a principled way
+  - $\rightarrow$ more stable estimates than fitting each participant separately
+
+.footnote[Wagenmakers et al. (2007); Chávez De la Peña & Vandekerckhove (2025); Lee (2011); Vandekerckhove et al. (2011)]
+
+---
+class: pink-light 
+
+## The Hierarchical EZ-DDM
+
+Choice and RT of person $i$ on trial $j$ follow a Wiener distribution:
+
+$$\mathbf{Y}_{ij} \sim \text{Wiener}(\alpha_i, \beta_i, \tau_i, \nu_i), \quad \beta_i = \frac{\alpha_i}{2}$$
+
+**EZ:** instead of this likelihood, the parameters are linked to the data through **3 summary statistics**:
+
+$$MRT_i \sim \text{Normal}\left(M_{ci}, \frac{\Sigma_{ci}}{C_i}\right)$$
+
+$$VRT_i \sim \text{Normal}\left(\Sigma_{ci}, \frac{2\Sigma_{ci}^2}{C_i - 1}\right) \quad (C_i > 30)$$
+
+.footnote[Chávez De la Peña & Vandekerckhove (2025)]
+---
+
+class: pink-light
+
+The Normal is a large-sample approximation, the sampling distribution later used in our Stan model is
+
+$$VRT_i \sim \text{Gamma}\left(\frac{C_i - 1}{2}, \frac{C_i - 1}{2\Sigma_{ci}}\right)$$
+
+$$C_i \sim \text{Binomial}(\pi_{ci}, J)$$
+
+
+---
+class: pink-light
+
+## Linking to the DDM Parameters
+
+Mean of the correct RTs:
+
+$$M_{ci} = \tau_i + \frac{\alpha_i}{2\nu_i} \cdot \frac{u_i - 1}{u_i + 1}$$
+
+Variance of the correct RTs:
+
+$$\Sigma_{ci} = \frac{\alpha_i}{2\nu_i^3} \cdot \frac{1 - 2\alpha_i\nu_i u_i - u_i^2}{(u_i + 1)^2}$$
+
+Probability of a correct response:
+
+$$\pi_{ci} = \frac{1}{\exp(-\alpha_i\nu_i) + 1}$$
+
+with $u_i = \exp(-\alpha_i \nu_i)$
+
+---
+
+class: pink
+
+**Let's look at how well the hierarchical EZ-DDM can recover (known) simulated values and try fitting it to a real lexical decision task data set.** 
+
+- click on this github to follow along (https://github.com/annanerum/EZ_HandsOn)
+
+
+```{r recovery-setup, include = FALSE}
+# results from the fit script (recovery_results.rds)
+PROJECT_DIR <- "/Users/annegiacobello/Desktop/EZ Paper /workshop utrecht"
+res <- readRDS(file.path(PROJECT_DIR, "fits_ez", "recovery_results.rds"))
+
+# plot theme for the white pink-light slides
+truth_col <- "#ee5da2"
+theme_light_slide <- function(base_size = 15) {
+  theme_minimal(base_size = base_size, base_family = "Hack") +
+    theme(
+      plot.background  = element_rect(fill = "white", colour = NA),
+      panel.background = element_rect(fill = "white", colour = NA),
+      panel.grid.minor = element_blank(),
+      text             = element_text(colour = "#001300"),
+      axis.text        = element_text(colour = "#001300"),
+      strip.text       = element_text(colour = truth_col, face = "bold"),
+      legend.position  = "bottom"
+    )
+}
+
+
+pop_labels <- c(beta_nu1              = "ν intercept",
+                nu_c                  = "ν word/nonword",
+                nu_c2                 = "ν frequency",
+                beta_alpha1           = "log α",
+                beta_tau              = "τ",
+                sigma_nu_intercept    = "SD ν intercept",
+                sigma_nu_c1           = "SD ν word/nonword",
+                sigma_nu_c2           = "SD ν frequency",
+                sigma_alpha_intercept = "SD log α",
+                sigma_tau_intercept   = "SD τ")
+sub_labels  <- c(nu_intercept_s = "ν intercept", nu_c_s = "ν word/nonword",
+                 nu_c2_s = "ν frequency", alpha_s = "log α", tau_s = "τ")
+cell_labels <- c(v = "ν", a = "α", t0 = "τ")
+cell_cols   <- c(nonword = "#001300", word_HF = "#ee5da2",
+                 word_LF = "#15ada3", word_VLF = "#c892d6")
+
+# person level: one simulated data set only
+show_rep <- 1
+
+# numbers used in the text
+r_sub  <- res$sub %>% filter(rep == show_rep) %>%
+  group_by(par) %>% summarise(r = round(cor(true, est), 2))
+r_cell <- res$cell %>% group_by(par) %>% summarise(r = round(cor(true, est), 2))
+r_sub  <- setNames(r_sub$r,  r_sub$par)
+r_cell <- setNames(r_cell$r, r_cell$par)
+```
+
+---
+
+class: pink-light
+
+# Parameter Recovery
+
+- Simulation: Lexical Decision
+- **100 participants × 300 trials**, 10 simulated data sets
+- 4 cells per person: nonwords (150 trials), high-, low- and very-low-frequency words (50 each)
+- **Drift rate** depends on word vs. nonword and on word frequency
+- **Boundary separation** and **non-decision time**: one value per person
+- All person-level parameters vary between participants
+- No bias, no across-trial variability $\rightarrow$ the data meet the EZ assumptions
+
+.footnote[Parameter values based on Ratcliff, Gomez & McKoon (2004); data simulated with `rtdists::rdiffusion()`]
+
+---
+
+class: pink-light
+
+## The Fitted Model
+
+Cell $k$ of person $i$:
+
+$$\nu_{ik} = \nu_{0i} + \nu_{1i}\, c_{1k} + \nu_{2i}\, c_{2k} \qquad \alpha_{ik} = \exp(\alpha_i) \qquad \tau_{ik} = \tau_i$$
+
+Each person-level parameter comes from a population distribution:
+
+$$\theta_i \sim \text{Normal}(\mu_\theta, \sigma_\theta)$$
+
+- $c_{1k}$: +1 nonword, −1 word
+- $c_{2k}$: centred word frequency
+- small cell-level deviations for $\nu$, $\alpha$ and $\tau$
+- Stan (cmdstanr): 4 chains, 1000 warm-up + 1000 samples
+- Across all 10 fits: `r sum(res$diag$divergences)` divergent transitions, max $\hat{R}$ = `r round(max(res$diag$max_rhat), 3)`
+
+---
+
+class: pink-light
+
+## Population Level
+
+```{r rec-pop, fig.width = 10, fig.height = 4.6, out.width = "100%"}
+res$pop %>%
+  mutate(par = factor(par, levels = names(pop_labels), labels = pop_labels)) %>%
+  ggplot(aes(x = factor(rep), y = est)) +
+  geom_hline(aes(yintercept = true), linetype = 2, colour = truth_col, linewidth = 0.8) +
+  geom_pointrange(aes(ymin = lo, ymax = hi), size = 0.25, colour = "#001300") +
+  facet_wrap(~ par, scales = "free_y", ncol = 5) +
+  scale_x_discrete(breaks = c(1, 5, 10)) +
+  labs(x = "simulated data set", y = "posterior mean [95% CrI]") +
+  theme_light_slide(13)
+```
+
+.small[
+- **Population means**: true value inside the 95% CrI in almost all data sets
+- **Between-person SDs of the effects** (word/nonword, frequency): wide intervals $\rightarrow$ they tend to be underestimated
+]
+
+---
+
+class: pink-light
+
+## Person Level
+
+```{r rec-sub, fig.width = 10, fig.height = 3.4, out.width = "100%"}
+res$sub %>%
+  filter(rep == show_rep) %>%
+  mutate(par = factor(par, levels = names(sub_labels), labels = sub_labels)) %>%
+  ggplot(aes(true, est)) +
+  geom_abline(linetype = 2, colour = truth_col, linewidth = 0.8) +
+  geom_point(alpha = 0.5, size = 1.4, colour = "#001300") +
+  facet_wrap(~ par, scales = "free", ncol = 5) +
+  labs(x = "true", y = "posterior mean") +
+  theme_light_slide(13)
+```
+
+.small[
+- One simulated data set (`r length(unique(res$sub$subj))` participants)
+- **Intercepts** recovered well: $\tau$ (r = `r r_sub[["tau_s"]]`), $\nu$ (r = `r r_sub[["nu_intercept_s"]]`), $\alpha$ (r = `r r_sub[["alpha_s"]]`)
+- **Individual effects** (word/nonword: r = `r r_sub[["nu_c_s"]]`, frequency: r = `r r_sub[["nu_c2_s"]]`): strong shrinkage toward the group mean
+- $\rightarrow$ small true differences between people (SD = 0.15) are hard to detect from 4 cells per person
+]
+
+---
+
+class: pink-light
+
+## Cell Level
+
+```{r rec-cell, fig.width = 10, fig.height = 3.8, out.width = "100%"}
+res$cell %>%
+  mutate(par = factor(par, levels = names(cell_labels), labels = cell_labels)) %>%
+  ggplot(aes(true, est, colour = cell)) +
+  geom_abline(linetype = 2, colour = "grey40", linewidth = 0.8) +
+  geom_point(alpha = 0.3, size = 0.8) +
+  facet_wrap(~ par, scales = "free") +
+  scale_colour_manual(values = cell_cols) +
+  guides(colour = guide_legend(override.aes = list(alpha = 1, size = 3))) +
+  labs(x = "true", y = "posterior mean", colour = NULL) +
+  theme_light_slide(13)
+```
+
+.small[
+- $\tau$ well (r = `r r_cell[["t0"]]`), $\nu$ good (r = `r r_cell[["v"]]`), $\alpha$ noisier (r = `r r_cell[["a"]]`)
+- Frequency effect is visible: high-frequency words have the highest drift rates
+]
+---
+
+class: pink-light
+
+# Thank you for your attention!
+
+```{r, out.width = "60%"}
+knitr::include_graphics("thanks_cat.jpeg")
+```
