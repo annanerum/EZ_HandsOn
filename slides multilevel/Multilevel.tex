@@ -322,7 +322,35 @@ Ecological fallacy in which the direction of an effect switches between the grou
 \item For the data for the \href{https://www.worldhappiness.report/ed/2024/}{World Happiness Report 2024}: Is the variance in people's happiness smaller (or larger) for higher (or lower) values of social support?
 \end{itemize}
 
+\end{frame}
 
+
+%
+\begin{frame}{\color{darkblue}Reliability, individual differences, \& shrinkage}
+
+\begin{itemize}
+\tightlist
+\item The nested structure of multilevel models takes into account that
+variability within individuals is smaller than between individuals.
+\item This manifests as {\color{teal}{shrinkage}}: the means of each individual
+"shrinks" towards the group mean.
+\item Shrinkage allows us to reduce the weight of random measurement noise and 
+place higher weight on systematic patterns in the data.
+\item This can result in higher measurement reliability.
+\end{itemize}
+
+\end{frame}
+
+%
+\begin{frame}{\color{darkblue}Shrinkage in action}
+
+\begin{figure}
+\centering
+\href{https://www.scientificamerican.com/article/steins-paradox-in-statistics/}{
+\includegraphics[width=.9\textwidth]{graphs/stein}}
+\end{figure}
+
+Illustration of hierarchical shrinkage.
 
 \end{frame}
 
